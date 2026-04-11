@@ -1,0 +1,18 @@
+# --- PLIK: requirements.txt ---
+
+# 1. Główny silnik PyTorch (z flagą wymuszającą wersję pod karty graficzne)
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch
+torchvision
+torchaudio
+
+# 2. Pobieranie danych z Kaggle
+kagglehub
+
+# 3. Explainable AI (nasze narzędzie do demaskowania "Mądrego Hansa")
+grad-cam
+
+# 4. Biblioteki pomocnicze (do operacji na macierzach i rysowania map ciepła)
+numpy
+matplotlib
+opencv-python
