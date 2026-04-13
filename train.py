@@ -7,7 +7,7 @@ from dataset import setup_data
 
 def train_model():
     # Parametry
-    epochs = 30  # Zwiększamy, żeby augmentacja miała czas zadziałać
+    epochs = 15  # Zwiększamy, żeby augmentacja miała czas zadziałać
     batch_size = 16
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -19,7 +19,7 @@ def train_model():
 
     # Modyfikacja nr 3: Mniejszy Learning Rate (Adam jest stabilniejszy)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.0001)
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
 
     print(f"Starting training for {epochs} epochs...")
 

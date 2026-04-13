@@ -5,28 +5,29 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, random_split
 
 # Konfiguracja
-TARGET_COUNTRIES = ['DE', 'ES', 'BO']
+TARGET_COUNTRIES = [
+    'AT', 'BE', 'BG', 'HR', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE',
 
-# Modyfikacja nr 2: Augmentacja danych
+]
+
+
+
 data_transforms = {
     'train': transforms.Compose([
-        transforms.Resize((512, 512)),
-        # Losowe odbicie lustrzane (geografia często jest symetryczna)
+        transforms.Resize((640, 640)),
         transforms.RandomHorizontalFlip(p=0.5),
-        # Zmiana jasności, kontrastu i nasycenia (różne pory dnia/kamery)
-        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-        # Losowe lekkie obroty (symulacja nierównego terenu)
-        transforms.RandomRotation(degrees=5),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+        transforms.ToTensor(), # To musi być tutaj!
+        # WANDALIZM: zamazujemy od 2% do 10% zdjęcia w locie
+        transforms.RandomErasing(p=0.5, scale=(0.02, 0.1), value='random'),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
     'val': transforms.Compose([
-        transforms.Resize((512, 512)),
+        transforms.Resize((640, 640)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ]),
 }
-
 
 def setup_data(batch_size=16):
     print("⏳ Pobieranie/Ładowanie danych...")

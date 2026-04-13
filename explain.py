@@ -18,7 +18,10 @@ from model import get_model
 def run_explanation():
     # 1. Konfiguracja urządzenia
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    TARGET_COUNTRIES = ['DE', 'ES', 'BO']
+    TARGET_COUNTRIES = [
+        'AT', 'BE', 'BG', 'HR', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE',
+
+    ]
 
     print(f"🧠 Ładowanie modelu na: {device}...")
     model = get_model(len(TARGET_COUNTRIES))
@@ -53,7 +56,7 @@ def run_explanation():
     print(f"🖼️ Analizuję: {actual_country.upper()} | {random_filename}")
 
     # 3. Przygotowanie zdjęcia (identycznie jak przy treningu)
-    img_pil = Image.open(image_path).convert('RGB').resize((512, 512))
+    img_pil = Image.open(image_path).convert('RGB').resize((640, 640))
     rgb_img = np.array(img_pil).astype(np.float32) / 255
 
     input_tensor = transforms.Compose([
