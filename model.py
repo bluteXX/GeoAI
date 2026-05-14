@@ -6,7 +6,7 @@ def get_model(num_classes):
     weights = EfficientNet_B0_Weights.IMAGENET1K_V1
     model = efficientnet_b0(weights=weights)
 
-    print(model)
+    # print(model)
 
     # 2. Zamrażamy warstwy (Fine-tuning początkowy)
     for param in model.parameters():

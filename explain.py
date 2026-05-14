@@ -18,7 +18,7 @@ from model import get_model
 
 def run_explanation():
     # 1. Konfiguracja urządzenia
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
 
     print(f"🧠 Ładowanie modelu na: {device}...")
     model = get_model(len(TARGET_COUNTRIES))
@@ -31,8 +31,7 @@ def run_explanation():
     for param in model.parameters():
         param.requires_grad = True
 
-    # Ostatnia warstwa splotowa dla ResNet-50
-    target_layers = [model.layer4[-1]]
+    target_layers = [model.features[-1]]
 
     # 2. Losowanie zdjęcia z dysku
     print("📂 Przeszukiwanie bazy zdjęć...")
@@ -68,6 +67,7 @@ def run_explanation():
         conf, pred_idx = torch.max(probabilities, 0)
 
     predicted_country = TARGET_COUNTRIES[pred_idx.item()]
+    print(TARGET_COUNTRIES)
     confidence_score = conf.item() * 100
 
     # 5. Generowanie Heatmapy (Grad-CAM)
@@ -95,6 +95,7 @@ def run_explanation():
     ax2 = fig.add_subplot(1, 2, 2)
     ax2.set_title(f"{status_msg}\nAI Pewność: {confidence_score:.2f}%", color=result_color, fontsize=15,
                   fontweight='bold', pad=15)
+
     ax2.imshow(visualization)
     ax2.axis('off')
 
@@ -106,4 +107,5 @@ def run_explanation():
 
 
 if __name__ == "__main__":
-    run_explanation()
+    for i in range(1):
+        run_explanation()

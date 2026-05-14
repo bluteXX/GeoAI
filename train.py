@@ -9,7 +9,7 @@ from dataset import setup_data
 def train_model():
     epochs = 15
     batch_size = 16
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
     print(f"🚀 Trening na urządzeniu: {device}")
 
     dataloaders, class_names = setup_data(batch_size=batch_size)
@@ -59,7 +59,7 @@ def train_model():
                 running_corrects += torch.sum(preds == labels.data)
 
             epoch_loss = running_loss / len(dataloaders[phase].dataset)
-            epoch_acc = running_corrects.double() / len(dataloaders[phase].dataset)
+            epoch_acc = running_corrects.float() / len(dataloaders[phase].dataset)
 
             print(f'Epoch {epoch + 1}/{epochs} | {phase.capitalize()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
 
