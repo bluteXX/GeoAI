@@ -1,111 +1,236 @@
-import torch
-import numpy as np
-import cv2
-import matplotlib.pyplot as plt
 import os
 import random
+from pathlib import Path
+
+import cv2
 import kagglehub
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
 from PIL import Image
-from dataset import TARGET_COUNTRIES
-
-
-from torchvision import transforms
 from pytorch_grad_cam import GradCAM
-from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
+from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+from torchvision import transforms
+
+from dataset import TARGET_COUNTRIES
 from model import get_model
 
 
-def run_explanation():
-    # 1. Konfiguracja urządzenia
-    device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
+# ---------------------------------------------------------------------------
+# Stałe
+# ---------------------------------------------------------------------------
 
+ANALYZED_COUNTRIES = ["PL", "GR", "CZ"]
+N_IMAGES = 200
+MISTAKES_ROOT = Path("/Users/kacperwrobel/Documents/Studia/AI/projekt/GeoAI/mistakes")
+MODEL_PATH = "geoguesser_baseline.pth"
+IMAGE_SIZE = (224, 224)
+IMAGENET_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_STD = [0.229, 0.224, 0.225]
+
+
+# ---------------------------------------------------------------------------
+# Model
+# ---------------------------------------------------------------------------
+
+def load_trained_model(model_path: str, num_classes: int, device: torch.device) -> torch.nn.Module:
+    """Wczytuje wagi modelu i przygotowuje go do inferencji i Grad-CAM."""
     print(f"🧠 Ładowanie modelu na: {device}...")
-    model = get_model(len(TARGET_COUNTRIES))
-    # Wczytujemy Twoje wyuczone wagi
-    model.load_state_dict(torch.load("geoguesser_baseline.pth", weights_only=True))
+    model = get_model(num_classes)
+    model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
     model.to(device)
     model.eval()
 
-    # Odmrażamy parametry, aby Grad-CAM mógł policzyć wpływ pikseli na wynik
+    # Grad-CAM wymaga aktywnych gradientów
     for param in model.parameters():
         param.requires_grad = True
 
-    target_layers = [model.features[-1]]
+    return model
 
-    # 2. Losowanie zdjęcia z dysku
-    print("📂 Przeszukiwanie bazy zdjęć...")
-    path = kagglehub.dataset_download("sylshaw/streetview-by-country")
-    data_dir = os.path.join(path, "streetview_images")
 
-    actual_country = random.choice(TARGET_COUNTRIES)
-    country_path = os.path.join(data_dir, actual_country)
+# ---------------------------------------------------------------------------
+# Przetwarzanie obrazów
+# ---------------------------------------------------------------------------
 
-    # Obsługa małych/wielkich liter w nazwach folderów
-    if not os.path.exists(country_path):
-        actual_country = actual_country.lower()
-        country_path = os.path.join(data_dir, actual_country)
+def preprocess_image(image_path: str, size: tuple = IMAGE_SIZE):
+    """Zwraca tensor wejściowy (1, C, H, W) oraz obraz RGB jako float32 [0, 1]."""
+    img_pil = Image.open(image_path).convert("RGB").resize(size)
+    rgb_img = np.array(img_pil).astype(np.float32) / 255.0
 
-    random_filename = random.choice(os.listdir(country_path))
-    image_path = os.path.join(country_path, random_filename)
-
-    print(f"🖼️ Analizuję: {actual_country.upper()} | {random_filename}")
-
-    # 3. Przygotowanie zdjęcia (identycznie jak przy treningu)
-    img_pil = Image.open(image_path).convert('RGB').resize((640, 640))
-    rgb_img = np.array(img_pil).astype(np.float32) / 255
-
-    input_tensor = transforms.Compose([
+    transform = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ])(img_pil).unsqueeze(0).to(device)
+        transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+    ])
+    input_tensor = transform(img_pil).unsqueeze(0)
 
-    # 4. Przewidywanie (Co AI faktycznie obstawia?)
+    return input_tensor, rgb_img
+
+
+def run_inference(model: torch.nn.Module, input_tensor: torch.Tensor, device: torch.device):
+    """Przeprowadza inferencję i zwraca prawdopodobieństwa klas."""
+    input_tensor = input_tensor.to(device)
     with torch.no_grad():
         output = model(input_tensor)
-        probabilities = torch.nn.functional.softmax(output, dim=1)[0]
-        conf, pred_idx = torch.max(probabilities, 0)
+        probabilities = torch.nn.functional.softmax(output, dim=1)[0].cpu().numpy()
+    return probabilities
 
-    predicted_country = TARGET_COUNTRIES[pred_idx.item()]
-    print(TARGET_COUNTRIES)
-    confidence_score = conf.item() * 100
 
-    # 5. Generowanie Heatmapy (Grad-CAM)
-    target_idx = TARGET_COUNTRIES.index(actual_country.upper())
-    targets = [ClassifierOutputTarget(target_idx)]
+# ---------------------------------------------------------------------------
+# Grad-CAM
+# ---------------------------------------------------------------------------
 
-    cam = GradCAM(model=model, target_layers=target_layers)
-    grayscale_cam = cam(input_tensor=input_tensor, targets=targets)[0, :]
-    visualization = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
+def generate_heatmap(
+    model: torch.nn.Module,
+    input_tensor: torch.Tensor,
+    target_layer,
+    target_class_idx: int,
+    rgb_img: np.ndarray,
+) -> np.ndarray:
+    """Generuje wizualizację Grad-CAM dla wskazanej klasy."""
+    cam = GradCAM(model=model, target_layers=[target_layer])
+    targets = [ClassifierOutputTarget(target_class_idx)]
 
-    # 6. Wyświetlanie wyników (Poprawione marginesy!)
-    fig = plt.figure(figsize=(14, 8))
+    grayscale_cam = cam(input_tensor=input_tensor, targets=targets)[0]
+    return show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
 
-    is_correct = predicted_country.upper() == actual_country.upper()
-    result_color = 'green' if is_correct else 'red'
-    status_msg = "TRAFIONY!" if is_correct else f"BŁĄD! (AI myślało, że to {predicted_country.upper()})"
 
-    # Panel 1: Oryginał
-    ax1 = fig.add_subplot(1, 2, 1)
-    ax1.set_title(f"Faktyczny kraj: {actual_country.upper()}\nPlik: {random_filename}", fontsize=10, pad=15)
+# ---------------------------------------------------------------------------
+# Wizualizacja
+# ---------------------------------------------------------------------------
+
+def build_figure(
+    rgb_img: np.ndarray,
+    heatmap_img: np.ndarray,
+    actual_country: str,
+    pred_country: str,
+    confidence: float,
+    filename: str,
+    results_dict: dict,
+) -> plt.Figure:
+    """Tworzy figurę z oryginalnym zdjęciem, heatmapą i wykresem klas."""
+    is_correct = pred_country.upper() == actual_country.upper()
+    result_color = "green" if is_correct else "red"
+    status_msg = "TRAFIONY!" if is_correct else f"BŁĄD! (AI: {pred_country.upper()})"
+
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(16, 8))
+
+    ax1.set_title(f"Faktyczny: {actual_country}\n{filename}", fontsize=10)
     ax1.imshow(rgb_img)
-    ax1.axis('off')
+    ax1.axis("off")
 
-    # Panel 2: Heatmapa
-    ax2 = fig.add_subplot(1, 2, 2)
-    ax2.set_title(f"{status_msg}\nAI Pewność: {confidence_score:.2f}%", color=result_color, fontsize=15,
-                  fontweight='bold', pad=15)
+    ax2.set_title(f"{status_msg}\nPewność: {confidence:.2f}%", color=result_color, fontweight="bold")
+    ax2.imshow(heatmap_img)
+    ax2.axis("off")
 
-    ax2.imshow(visualization)
-    ax2.axis('off')
+    countries = list(results_dict.keys())
+    probs = [results_dict[c] * 100 for c in countries]
+    ax3.barh(countries, probs, color="skyblue")
+    ax3.set_xlim(0, 100)
+    ax3.set_xlabel("Prawdopodobieństwo [%]")
+    ax3.set_title("Analiza klas")
 
-    # Ręczne ustawienie marginesów, żeby nic nie ucięło (top=0.85 daje 15% miejsca na górze)
-    plt.subplots_adjust(top=0.85, bottom=0.05, left=0.05, right=0.95, wspace=0.2)
+    plt.subplots_adjust(top=0.85, bottom=0.1, left=0.05, right=0.95, wspace=0.3)
+    return fig
 
-    print("🚀 Wyświetlam okno graficzne...")
-    plt.show()
+
+# ---------------------------------------------------------------------------
+# Analiza jednego obrazu
+# ---------------------------------------------------------------------------
+
+def analyze_single_image(model: torch.nn.Module, data_dir: str, device: torch.device):
+    """
+    Losuje obraz, wykonuje predykcję i generuje wizualizację z Grad-CAM.
+    Zwraca: (figura, słownik prawdopodobieństw, nazwa faktycznego kraju).
+    """
+    # Losowanie zdjęcia
+    actual_country = random.choice(TARGET_COUNTRIES)
+    country_folder = os.path.join(data_dir, actual_country)
+    if not os.path.exists(country_folder):
+        country_folder = country_folder.lower()
+
+    filename = random.choice(os.listdir(country_folder))
+    img_path = os.path.join(country_folder, filename)
+
+    # Przetwarzanie i inferencja
+    input_tensor, rgb_img = preprocess_image(img_path)
+    probabilities = run_inference(model, input_tensor, device)
+    pred_idx = int(np.argmax(probabilities))
+
+    results_dict = {TARGET_COUNTRIES[i]: probabilities[i] for i in range(len(TARGET_COUNTRIES))}
+
+    # Grad-CAM (ostatnia warstwa konwolucyjna EfficientNet)
+    target_layer = model.features[-1]
+    actual_country_idx = TARGET_COUNTRIES.index(actual_country.upper())
+    heatmap = generate_heatmap(model, input_tensor.to(device), target_layer, actual_country_idx, rgb_img)
+
+    fig = build_figure(
+        rgb_img, heatmap,
+        actual_country, TARGET_COUNTRIES[pred_idx],
+        probabilities[pred_idx] * 100,
+        filename, results_dict,
+    )
+
+    return fig, results_dict, actual_country
+
+
+# ---------------------------------------------------------------------------
+# Czyszczenie folderu z pomyłkami
+# ---------------------------------------------------------------------------
+
+def clear_mistakes_folder(folder: Path) -> None:
+    """Usuwa wszystkie pliki z podfolderów folderu z pomyłkami."""
+    for subfolder in folder.iterdir():
+        for file in subfolder.iterdir():
+            if file.is_file():
+                file.unlink()
+
+
+# ---------------------------------------------------------------------------
+# Główna pętla
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    device = torch.device(
+        "cuda" if torch.cuda.is_available()
+        else ("mps" if torch.backends.mps.is_available() else "cpu")
+    )
+
+    print("⏳ Pobieranie i weryfikacja danych z Kaggle (to potrwa tylko chwilę)...")
+    kaggle_path = kagglehub.dataset_download("sylshaw/streetview-by-country")
+    data_dir = os.path.join(kaggle_path, "streetview_images")
+
+    model = load_trained_model(MODEL_PATH, len(TARGET_COUNTRIES), device)
+
+    mistake_stats = {
+        country: {other: 0 for other in ANALYZED_COUNTRIES if other != country}
+        for country in ANALYZED_COUNTRIES
+    }
+
+    clear_mistakes_folder(MISTAKES_ROOT)
+
+    print(f"\n🚀 Rozpoczynam weryfikację {N_IMAGES} obrazów...")
+
+    for i in range(N_IMAGES):
+        fig, results, actual = analyze_single_image(model, data_dir, device)
+        guessed = max(results, key=results.get)
+
+        is_mistake = actual in mistake_stats and guessed in mistake_stats.get(actual, {}) and actual != guessed
+        if is_mistake:
+            mistake_stats[actual][guessed] += 1
+            mistake_dir = MISTAKES_ROOT / f"{actual}-{guessed}"
+            mistake_dir.mkdir(parents=True, exist_ok=True)
+            fig.savefig(mistake_dir / f"mistake_{i}.png")
+
+        plt.close(fig)
+
+        if (i + 1) % 10 == 0:
+            print(f"✅ Przeanalizowano {i + 1}/{N_IMAGES} zdjęć...")
+
+    print("\n📊 Statystyki pomyłek (PL, GR, CZ):")
+    for country, mistakes in mistake_stats.items():
+        print(f"  Kraj docelowy {country} pomylono z: {mistakes}")
 
 
 if __name__ == "__main__":
-    for i in range(1):
-        run_explanation()
+    main()
