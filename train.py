@@ -17,7 +17,6 @@ def train_model():
 
     criterion = nn.CrossEntropyLoss()
 
-    # POPRAWKA: Przekazujemy tylko te wagi, które są odblokowane do treningu
     params_to_update = [p for p in model.parameters() if p.requires_grad]
     optimizer = optim.Adam(params_to_update, lr=0.001)
 
@@ -28,6 +27,10 @@ def train_model():
     best_model_wts = copy.deepcopy(model.state_dict())
 
     for epoch in range(epochs):
+        if epoch == 5:
+            for param in model.parameters(): param.requires_grad = True
+            print("🔓 Odmrażanie reszty sieci! Przechodzimy w tryb głębokiego Fine-Tuningu.")
+            optimizer = optim.Adam(model.parameters(), lr=0.00001)
         for phase in ['train', 'val']:
             if phase == 'train':
                 model.train()
@@ -36,6 +39,7 @@ def train_model():
 
             running_loss = 0.0
             running_corrects = 0
+
 
             for inputs, labels in dataloaders[phase]:
                 inputs, labels = inputs.to(device), labels.to(device)
@@ -59,7 +63,6 @@ def train_model():
 
             print(f'Epoch {epoch + 1}/{epochs} | {phase.capitalize()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
 
-            # POPRAWKA: Zapisujemy tylko model o najwyższej dokładności na zbiorze walidacyjnym
             if phase == 'val' and epoch_acc > best_acc:
                 best_acc = epoch_acc
                 best_model_wts = copy.deepcopy(model.state_dict())

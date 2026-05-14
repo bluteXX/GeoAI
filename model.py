@@ -21,4 +21,3 @@ def get_model(num_classes):
 
 if __name__ == "__main__":
     test_model = get_model(num_classes=5)
-    print("Model gotowy. Ostatnia warstwa:", test_model.fc)
