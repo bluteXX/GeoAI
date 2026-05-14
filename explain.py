@@ -6,6 +6,7 @@ import os
 import random
 import kagglehub
 from PIL import Image
+from dataset import TARGET_COUNTRIES
 
 
 from torchvision import transforms
@@ -18,10 +19,6 @@ from model import get_model
 def run_explanation():
     # 1. Konfiguracja urządzenia
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    TARGET_COUNTRIES = [
-        'AT', 'BE', 'BG', 'HR', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE',
-
-    ]
 
     print(f"🧠 Ładowanie modelu na: {device}...")
     model = get_model(len(TARGET_COUNTRIES))

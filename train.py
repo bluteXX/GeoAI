@@ -1,27 +1,31 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import copy  # Dodane do zapisu najlepszego modelu
 from model import get_model
 from dataset import setup_data
 
 
 def train_model():
-    # Parametry
-    epochs = 15  # Zwiększamy, żeby augmentacja miała czas zadziałać
+    epochs = 15
     batch_size = 16
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"🚀 Trening na urządzeniu: {device}")
 
     dataloaders, class_names = setup_data(batch_size=batch_size)
-    model = get_model(len(class_names))
-    model = model.to(device)
+    model = get_model(len(class_names)).to(device)
 
-    # Modyfikacja nr 3: Mniejszy Learning Rate (Adam jest stabilniejszy)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-    print(f"Starting training for {epochs} epochs...")
+    # POPRAWKA: Przekazujemy tylko te wagi, które są odblokowane do treningu
+    params_to_update = [p for p in model.parameters() if p.requires_grad]
+    optimizer = optim.Adam(params_to_update, lr=0.001)
+
+    print(f"Rozpoczęcie treningu na {epochs} epok...")
+
+    # Zmienne do śledzenia najlepszego modelu
+    best_acc = 0.0
+    best_model_wts = copy.deepcopy(model.state_dict())
 
     for epoch in range(epochs):
         for phase in ['train', 'val']:
@@ -34,8 +38,7 @@ def train_model():
             running_corrects = 0
 
             for inputs, labels in dataloaders[phase]:
-                inputs = inputs.to(device)
-                labels = labels.to(device)
+                inputs, labels = inputs.to(device), labels.to(device)
 
                 optimizer.zero_grad()
 
@@ -56,8 +59,14 @@ def train_model():
 
             print(f'Epoch {epoch + 1}/{epochs} | {phase.capitalize()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
 
-        # Zapisujemy model po każdej epoce (jako backup)
-        torch.save(model.state_dict(), "geoguesser_baseline.pth")
+            # POPRAWKA: Zapisujemy tylko model o najwyższej dokładności na zbiorze walidacyjnym
+            if phase == 'val' and epoch_acc > best_acc:
+                best_acc = epoch_acc
+                best_model_wts = copy.deepcopy(model.state_dict())
+                print(f"🌟 Znaleziono nowy najlepszy model! (Zapisuję)")
+                torch.save(best_model_wts, "geoguesser_baseline.pth")
+
+    print(f"Trening zakończony. Najwyższa dokładność walidacyjna: {best_acc:.4f}")
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader, random_split
 
 # Konfiguracja
 TARGET_COUNTRIES = [
-    'AT', 'BE', 'BG', 'HR', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE',
+    'FI', 'NG', 'PH'
 
 ]
 
@@ -18,7 +18,6 @@ data_transforms = {
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
         transforms.ToTensor(), # To musi być tutaj!
-        # WANDALIZM: zamazujemy od 2% do 10% zdjęcia w locie
         transforms.RandomErasing(p=0.5, scale=(0.02, 0.1), value='random'),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
