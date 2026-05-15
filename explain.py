@@ -21,9 +21,10 @@ from model import get_model
 # Stałe
 # ---------------------------------------------------------------------------
 
-ANALYZED_COUNTRIES = ["PL", "DE", "FR"]
+ANALYZED_COUNTRIES = ['PL', 'DE', 'FR', 'IT', 'ES', 'NL', 'BE', 'AT', 'CZ', 'SE']
 N_IMAGES = 200
-MISTAKES_ROOT = Path("/Users/kacperwrobel/Documents/Studia/AI/projekt/GeoAI/mistakes")
+BASE_DIR = Path(__file__).resolve().parent
+MISTAKES_ROOT = BASE_DIR / "mistakes"
 MODEL_PATH = "geoguesser_baseline.pth"
 IMAGE_SIZE = (224, 224)
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
@@ -207,6 +208,11 @@ def main() -> None:
         for country in ANALYZED_COUNTRIES
     }
 
+    country_totals = {country: 0 for country in ANALYZED_COUNTRIES}
+
+    # NOWE: Licznik wszystkich poprawnych odpowiedzi
+    total_correct = 0
+
     clear_mistakes_folder(MISTAKES_ROOT)
 
     print(f"\n🚀 Rozpoczynam weryfikację {N_IMAGES} obrazów...")
@@ -215,22 +221,50 @@ def main() -> None:
         fig, results, actual = analyze_single_image(model, data_dir, device)
         guessed = max(results, key=results.get)
 
-        is_mistake = actual in mistake_stats and guessed in mistake_stats.get(actual, {}) and actual != guessed
-        if is_mistake:
-            mistake_stats[actual][guessed] += 1
-            mistake_dir = MISTAKES_ROOT / f"{actual}-{guessed}"
-            mistake_dir.mkdir(parents=True, exist_ok=True)
-            fig.savefig(mistake_dir / f"mistake_{i}.png")
+        if actual in country_totals:
+            country_totals[actual] += 1
+
+        # Sprawdzamy, czy model zgadł poprawnie
+        if actual == guessed:
+            total_correct += 1
+        else:
+            is_mistake = actual in mistake_stats and guessed in mistake_stats.get(actual, {})
+            if is_mistake:
+                mistake_stats[actual][guessed] += 1
+                mistake_dir = MISTAKES_ROOT / f"{actual}-{guessed}"
+                mistake_dir.mkdir(parents=True, exist_ok=True)
+                fig.savefig(mistake_dir / f"mistake_{i}.png")
 
         plt.close(fig)
 
         if (i + 1) % 10 == 0:
             print(f"✅ Przeanalizowano {i + 1}/{N_IMAGES} zdjęć...")
 
-    print("\n📊 Statystyki pomyłek (PL, GR, CZ):")
-    for country, mistakes in mistake_stats.items():
-        print(f"  Kraj docelowy {country} pomylono z: {mistakes}")
+    # NOWE: Wypisywanie całkowitego wyniku
+    print("\n" + "=" * 60)
+    overall_accuracy = (total_correct / N_IMAGES) * 100
+    print(f"🎯 CAŁKOWITA SKUTECZNOŚĆ MODELU: {overall_accuracy:.2f}% ({total_correct}/{N_IMAGES})")
+    print("=" * 60)
 
+    print("\n📊 SZCZEGÓŁOWE STATYSTYKI POMYŁEK:")
+    print("-" * 60)
+    for country, mistakes in mistake_stats.items():
+        total_tests = country_totals[country]
+        if total_tests == 0:
+            continue
+
+        active_mistakes = {k: v for k, v in mistakes.items() if v > 0}
+        total_mistakes = sum(active_mistakes.values())
+        accuracy = ((total_tests - total_mistakes) / total_tests) * 100
+
+        print(f"🌍 {country} (Testowano: {total_tests} razy)")
+
+        if not active_mistakes:
+            print("   └─ 🌟 Perfekcyjnie! Brak pomyłek.")
+        else:
+            mistakes_str = ", ".join([f"{k}: {v}" for k, v in active_mistakes.items()])
+            print(f"   └─ ❌ Mylono z: {mistakes_str}")
+    print("-" * 60)
 
 if __name__ == "__main__":
     main()
