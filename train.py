@@ -4,6 +4,7 @@ import torch.optim as optim
 import copy  # Dodane do zapisu najlepszego modelu
 from model import get_model
 from dataset import setup_data
+import torch.optim.lr_scheduler as lr_scheduler
 
 
 def train_model():
@@ -28,9 +29,15 @@ def train_model():
 
     for epoch in range(epochs):
         if epoch == 5:
-            for param in model.parameters(): param.requires_grad = True
             print("🔓 Odmrażanie reszty sieci! Przechodzimy w tryb głębokiego Fine-Tuningu.")
-            optimizer = optim.Adam(model.parameters(), lr=0.00001)
+            for param in model.parameters():
+                param.requires_grad = True
+
+            # Zmiana z Adam na AdamW + start z nieco wyższego pułapu (1e-4)
+            optimizer = optim.AdamW(model.parameters(), lr=0.0001, weight_decay=1e-4)
+
+            # Inicjalizacja Schedulera (restart co 5 epok)
+            scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=5, T_mult=2, eta_min=1e-6)
         for phase in ['train', 'val']:
             if phase == 'train':
                 model.train()
@@ -62,6 +69,11 @@ def train_model():
             epoch_acc = running_corrects.float() / len(dataloaders[phase].dataset)
 
             print(f'Epoch {epoch + 1}/{epochs} | {phase.capitalize()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
+
+            if phase == 'train' and epoch >= 5:
+                current_lr = optimizer.param_groups[0]['lr']
+                print(f"📉 Aktualny Learning Rate: {current_lr:.7f}")
+                scheduler.step()
 
             if phase == 'val' and epoch_acc > best_acc:
                 best_acc = epoch_acc

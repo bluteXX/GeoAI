@@ -4,6 +4,7 @@ import kagglehub
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, random_split
 
+
 # Konfiguracja
 TARGET_COUNTRIES = [
     'PL', 'CZ', 'GR'
@@ -11,14 +12,14 @@ TARGET_COUNTRIES = [
 ]
 
 
-
 data_transforms = {
     'train': transforms.Compose([
-        transforms.Resize((224,224)),
+        transforms.RandomResizedCrop(224, scale=(0.6, 1.0)), # Delikatniejsze wycinanie dla wszystkich!
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
-        transforms.ToTensor(), # To musi być tutaj!
-        transforms.RandomErasing(p=0.5, scale=(0.02, 0.1), value='random'),
+        transforms.RandomAdjustSharpness(sharpness_factor=2.0, p=0.3), # Trochę wyostrzania dla wszystkich
+        transforms.ToTensor(),
+        transforms.RandomErasing(p=0.3, scale=(0.02, 0.1), value='random'),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
     'val': transforms.Compose([
@@ -70,8 +71,8 @@ def setup_data(batch_size=16):
     val_ds = torch.utils.data.Subset(val_full, val_idx)
 
     dataloaders = {
-        'train': DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True),
-        'val': DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True)
+        'train': DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=2),
+        'val': DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=2)
     }
 
     return dataloaders, TARGET_COUNTRIES
