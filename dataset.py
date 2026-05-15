@@ -6,10 +6,12 @@ from torch.utils.data import DataLoader, random_split
 
 
 # Konfiguracja
-TARGET_COUNTRIES = [
-    'PL', 'DE', 'FR'
+# dataset.py
 
-]
+# Pełna lista państw z Twojego projektu (10 krajów)
+TARGET_COUNTRIES = ['PL', 'DE', 'FR', 'IT', 'ES', 'NL', 'BE', 'AT', 'CZ', 'SE']
+
+# Reszta kodu transforms i setup_data pozostaje bez zmian (pamiętaj o usunięciu RandomErasing, tak jak ustaliliśmy)
 
 
 data_transforms = {
