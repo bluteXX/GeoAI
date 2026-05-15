@@ -4,6 +4,9 @@ from pathlib import Path
 
 import cv2
 import kagglehub
+import matplotlib
+
+matplotlib.use('Agg')  # Zabezpieczenie przed crashem Windowsa przy generowaniu 200 wykresów w pętli
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -13,9 +16,8 @@ from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from torchvision import transforms
 
-from dataset import TARGET_COUNTRIES
+from dataset import TARGET_COUNTRIES, setup_data
 from model import get_model
-
 
 # ---------------------------------------------------------------------------
 # Stałe
@@ -26,7 +28,7 @@ N_IMAGES = 200
 BASE_DIR = Path(__file__).resolve().parent
 MISTAKES_ROOT = BASE_DIR / "mistakes"
 MODEL_PATH = "geoguesser_baseline.pth"
-IMAGE_SIZE = (224, 224)
+IMAGE_SIZE = (224, 224)  # Zgodnie z rozdzielczością wydzieloną w dataset.py dla EfficientNet-B0
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 
@@ -82,11 +84,11 @@ def run_inference(model: torch.nn.Module, input_tensor: torch.Tensor, device: to
 # ---------------------------------------------------------------------------
 
 def generate_heatmap(
-    model: torch.nn.Module,
-    input_tensor: torch.Tensor,
-    target_layer,
-    target_class_idx: int,
-    rgb_img: np.ndarray,
+        model: torch.nn.Module,
+        input_tensor: torch.Tensor,
+        target_layer,
+        target_class_idx: int,
+        rgb_img: np.ndarray,
 ) -> np.ndarray:
     """Generuje wizualizację Grad-CAM dla wskazanej klasy."""
     cam = GradCAM(model=model, target_layers=[target_layer])
@@ -101,13 +103,13 @@ def generate_heatmap(
 # ---------------------------------------------------------------------------
 
 def build_figure(
-    rgb_img: np.ndarray,
-    heatmap_img: np.ndarray,
-    actual_country: str,
-    pred_country: str,
-    confidence: float,
-    filename: str,
-    results_dict: dict,
+        rgb_img: np.ndarray,
+        heatmap_img: np.ndarray,
+        actual_country: str,
+        pred_country: str,
+        confidence: float,
+        filename: str,
+        results_dict: dict,
 ) -> plt.Figure:
     """Tworzy figurę z oryginalnym zdjęciem, heatmapą i wykresem klas."""
     is_correct = pred_country.upper() == actual_country.upper()
@@ -139,19 +141,17 @@ def build_figure(
 # Analiza jednego obrazu
 # ---------------------------------------------------------------------------
 
-def analyze_single_image(model: torch.nn.Module, data_dir: str, device: torch.device):
+def analyze_single_image(model: torch.nn.Module, val_dataset, device: torch.device):
     """
-    Losuje obraz, wykonuje predykcję i generuje wizualizację z Grad-CAM.
-    Zwraca: (figura, słownik prawdopodobieństw, nazwa faktycznego kraju).
+    Losuje obraz ze zbioru walidacyjnego (niewidocznego dla modelu podczas nauki),
+    wykonuje predykcję i generuje wizualizację z Grad-CAM.
     """
-    # Losowanie zdjęcia
-    actual_country = random.choice(TARGET_COUNTRIES)
-    country_folder = os.path.join(data_dir, actual_country)
-    if not os.path.exists(country_folder):
-        country_folder = country_folder.lower()
+    # Losowanie indeksu ze zbioru walidacyjnego
+    idx = random.randint(0, len(val_dataset) - 1)
 
-    filename = random.choice(os.listdir(country_folder))
-    img_path = os.path.join(country_folder, filename)
+    # Pobranie ścieżki oraz etykiety z podziału w dataset.py
+    img_path, actual_label_idx = val_dataset.dataset.samples[val_dataset.indices[idx]]
+    actual_country = TARGET_COUNTRIES[actual_label_idx].upper()
 
     # Przetwarzanie i inferencja
     input_tensor, rgb_img = preprocess_image(img_path)
@@ -160,11 +160,12 @@ def analyze_single_image(model: torch.nn.Module, data_dir: str, device: torch.de
 
     results_dict = {TARGET_COUNTRIES[i]: probabilities[i] for i in range(len(TARGET_COUNTRIES))}
 
-    # Grad-CAM (ostatnia warstwa konwolucyjna EfficientNet)
+    # Grad-CAM (ostatnia warstwa konwolucyjna EfficientNet-B0)
     target_layer = model.features[-1]
     actual_country_idx = TARGET_COUNTRIES.index(actual_country.upper())
     heatmap = generate_heatmap(model, input_tensor.to(device), target_layer, actual_country_idx, rgb_img)
 
+    filename = Path(img_path).name
     fig = build_figure(
         rgb_img, heatmap,
         actual_country, TARGET_COUNTRIES[pred_idx],
@@ -180,11 +181,13 @@ def analyze_single_image(model: torch.nn.Module, data_dir: str, device: torch.de
 # ---------------------------------------------------------------------------
 
 def clear_mistakes_folder(folder: Path) -> None:
-    """Usuwa wszystkie pliki z podfolderów folderu z pomyłkami."""
-    for subfolder in folder.iterdir():
-        for file in subfolder.iterdir():
-            if file.is_file():
-                file.unlink()
+    """Usuwa wszystkie pliki z podfolderów folderu z pomyłkami (jeśli istnieją)."""
+    if folder.exists():
+        for subfolder in folder.iterdir():
+            if subfolder.is_dir():
+                for file in subfolder.iterdir():
+                    if file.is_file():
+                        file.unlink()
 
 
 # ---------------------------------------------------------------------------
@@ -197,9 +200,10 @@ def main() -> None:
         else ("mps" if torch.backends.mps.is_available() else "cpu")
     )
 
-    print("⏳ Pobieranie i weryfikacja danych z Kaggle (to potrwa tylko chwilę)...")
-    kaggle_path = kagglehub.dataset_download("sylshaw/streetview-by-country")
-    data_dir = os.path.join(kaggle_path, "streetview_images")
+    print("⏳ Pobieranie i weryfikacja danych z funkcji setup_data...")
+    # Ładujemy dane za pomocą Twojego dataset.py (batch_size=1 idealne do testów pojedynczych zdjęć)
+    dataloaders, _ = setup_data(batch_size=1)
+    val_ds = dataloaders['val'].dataset
 
     model = load_trained_model(MODEL_PATH, len(TARGET_COUNTRIES), device)
 
@@ -210,21 +214,22 @@ def main() -> None:
 
     country_totals = {country: 0 for country in ANALYZED_COUNTRIES}
 
-    # NOWE: Licznik wszystkich poprawnych odpowiedzi
+    # Licznik wszystkich poprawnych odpowiedzi na całościowy procent
     total_correct = 0
 
     clear_mistakes_folder(MISTAKES_ROOT)
 
-    print(f"\n🚀 Rozpoczynam weryfikację {N_IMAGES} obrazów...")
+    print(f"\n🚀 Rozpoczynam czystą weryfikację {N_IMAGES} obrazów ze zbioru walidacyjnego...")
 
     for i in range(N_IMAGES):
-        fig, results, actual = analyze_single_image(model, data_dir, device)
+        # Podajemy val_ds zamiast surowego data_dir
+        fig, results, actual = analyze_single_image(model, val_ds, device)
         guessed = max(results, key=results.get)
 
         if actual in country_totals:
             country_totals[actual] += 1
 
-        # Sprawdzamy, czy model zgadł poprawnie
+        # Sprawdzamy, czy model trafił
         if actual == guessed:
             total_correct += 1
         else:
@@ -240,10 +245,10 @@ def main() -> None:
         if (i + 1) % 10 == 0:
             print(f"✅ Przeanalizowano {i + 1}/{N_IMAGES} zdjęć...")
 
-    # NOWE: Wypisywanie całkowitego wyniku
+    # WYPISYWANIE CAŁKOWITEGO GLOBALNEGO PROCENTU
     print("\n" + "=" * 60)
     overall_accuracy = (total_correct / N_IMAGES) * 100
-    print(f"🎯 CAŁKOWITA SKUTECZNOŚĆ MODELU: {overall_accuracy:.2f}% ({total_correct}/{N_IMAGES})")
+    print(f"🎯 CAŁKOWITA SKUTECZNOŚĆ MODELU NA NOWYCH ZDJĘCIACH: {overall_accuracy:.2f}% ({total_correct}/{N_IMAGES})")
     print("=" * 60)
 
     print("\n📊 SZCZEGÓŁOWE STATYSTYKI POMYŁEK:")
@@ -254,17 +259,16 @@ def main() -> None:
             continue
 
         active_mistakes = {k: v for k, v in mistakes.items() if v > 0}
-        total_mistakes = sum(active_mistakes.values())
-        accuracy = ((total_tests - total_mistakes) / total_tests) * 100
 
-        print(f"🌍 {country} (Testowano: {total_tests} razy)")
+        print(f"🌍 {country} (Wylosowano do testu: {total_tests} razy)")
 
         if not active_mistakes:
-            print("   └─ 🌟 Perfekcyjnie! Brak pomyłek.")
+            print("   └─ 🌟 Perfekcyjnie! Brak pomyłek na tym państwie.")
         else:
             mistakes_str = ", ".join([f"{k}: {v}" for k, v in active_mistakes.items()])
             print(f"   └─ ❌ Mylono z: {mistakes_str}")
     print("-" * 60)
+
 
 if __name__ == "__main__":
     main()
