@@ -7,19 +7,20 @@ from torch.utils.data import DataLoader, random_split, Subset
 # Konfiguracja - 10 państw
 TARGET_COUNTRIES = ['PL', 'DE', 'FR', 'IT', 'ES', 'NL', 'BE', 'AT', 'CZ', 'SE']
 
-# TWOJE transformacje (całkowicie wycięty RandomErasing)
+# Zaktualizowane transformacje
 data_transforms = {
     'train': transforms.Compose([
-        transforms.RandomResizedCrop(288, scale=(0.7, 1.0)),
-        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomResizedCrop(300, scale=(0.7, 1.0)), # Rozmiar dla B3
+        transforms.RandomHorizontalFlip(p=0.2), # Zmniejszone ryzyko odwrócenia napisów
         transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
         transforms.RandomAdjustSharpness(sharpness_factor=2.0, p=0.3),
         transforms.ToTensor(),
+        transforms.RandomErasing(p=0.2, scale=(0.02, 0.1)), # Wymazywanie losowych fragmentów (2-10%)
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
     'val_test': transforms.Compose([
-        transforms.Resize(300),
-        transforms.CenterCrop(288),
+        transforms.Resize(320),
+        transforms.CenterCrop(300), # Rozmiar dla B3
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),

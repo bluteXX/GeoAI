@@ -20,7 +20,7 @@ MISTAKES_ROOT = BASE_DIR / "mistakes"
 MODEL_PATH = BASE_DIR / "geoguesser_baseline.pth"
 
 N_IMAGES = 1000 # Ograniczam do 200 żeby skrypt działał szybko, zmień na 1000 jeśli chcesz
-IMAGE_SIZE = (288, 288) # Aktualizacja dla B2
+IMAGE_SIZE = (300, 300)
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 

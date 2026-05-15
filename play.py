@@ -11,7 +11,7 @@ from model import get_model
 from dataset import TARGET_COUNTRIES, setup_data
 
 MODEL_PATH = "geoguesser_baseline.pth"
-IMAGE_SIZE = (288, 288)  # Zgodnie z modelem B2
+IMAGE_SIZE = (300, 300)
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 

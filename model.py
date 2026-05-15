@@ -1,10 +1,10 @@
 import torch.nn as nn
-from torchvision.models import efficientnet_b2, EfficientNet_B2_Weights
+from torchvision.models import efficientnet_b3, EfficientNet_B3_Weights
 
 def get_model(num_classes):
-    # 1. Pobieramy głębszą sieć (B2)
-    weights = EfficientNet_B2_Weights.IMAGENET1K_V1
-    model = efficientnet_b2(weights=weights)
+    # 1. Pobieramy głębszą sieć (B3)
+    weights = EfficientNet_B3_Weights.IMAGENET1K_V1
+    model = efficientnet_b3(weights=weights)
 
     # 2. Zamrażamy warstwy bazowe
     for param in model.parameters():
