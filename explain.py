@@ -2,8 +2,6 @@ import os
 import random
 from pathlib import Path
 
-import cv2
-import kagglehub
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -13,18 +11,22 @@ from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from torchvision import transforms
 
-from dataset import TARGET_COUNTRIES
+# Pobieramy również setup_data, aby skrypt wiedział, które zdjęcia są w teście!
+from dataset import TARGET_COUNTRIES, setup_data
 from model import get_model
 
-
 # ---------------------------------------------------------------------------
-# Stałe
+# Stałe i Ścieżki
 # ---------------------------------------------------------------------------
 
 ANALYZED_COUNTRIES = ["PL", "GR", "CZ"]
 N_IMAGES = 200
-MISTAKES_ROOT = Path("/Users/kacperwrobel/Documents/Studia/AI/projekt/GeoAI/mistakes")
-MODEL_PATH = "geoguesser_baseline.pth"
+
+# Bezpieczne ścieżki względne
+BASE_DIR = Path(__file__).resolve().parent
+MISTAKES_ROOT = BASE_DIR / "mistakes"
+MODEL_PATH = BASE_DIR / "geoguesser_baseline.pth"
+
 IMAGE_SIZE = (224, 224)
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
@@ -34,11 +36,13 @@ IMAGENET_STD = [0.229, 0.224, 0.225]
 # Model
 # ---------------------------------------------------------------------------
 
-def load_trained_model(model_path: str, num_classes: int, device: torch.device) -> torch.nn.Module:
+def load_trained_model(model_path: Path, num_classes: int, device: torch.device) -> torch.nn.Module:
     """Wczytuje wagi modelu i przygotowuje go do inferencji i Grad-CAM."""
-    print(f"🧠 Ładowanie modelu na: {device}...")
+    print(f"🧠 Ładowanie modelu z: {model_path} na: {device}...")
     model = get_model(num_classes)
-    model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+
+    # Dodane strict=False w razie drobnych niezgodności warstw (opcjonalne, ale bezpieczne)
+    model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True), strict=False)
     model.to(device)
     model.eval()
 
@@ -53,7 +57,7 @@ def load_trained_model(model_path: str, num_classes: int, device: torch.device) 
 # Przetwarzanie obrazów
 # ---------------------------------------------------------------------------
 
-def preprocess_image(image_path: str, size: tuple = IMAGE_SIZE):
+def preprocess_image(image_path: str | Path, size: tuple = IMAGE_SIZE):
     """Zwraca tensor wejściowy (1, C, H, W) oraz obraz RGB jako float32 [0, 1]."""
     img_pil = Image.open(image_path).convert("RGB").resize(size)
     rgb_img = np.array(img_pil).astype(np.float32) / 255.0
@@ -81,11 +85,11 @@ def run_inference(model: torch.nn.Module, input_tensor: torch.Tensor, device: to
 # ---------------------------------------------------------------------------
 
 def generate_heatmap(
-    model: torch.nn.Module,
-    input_tensor: torch.Tensor,
-    target_layer,
-    target_class_idx: int,
-    rgb_img: np.ndarray,
+        model: torch.nn.Module,
+        input_tensor: torch.Tensor,
+        target_layer,
+        target_class_idx: int,
+        rgb_img: np.ndarray,
 ) -> np.ndarray:
     """Generuje wizualizację Grad-CAM dla wskazanej klasy."""
     cam = GradCAM(model=model, target_layers=[target_layer])
@@ -100,13 +104,13 @@ def generate_heatmap(
 # ---------------------------------------------------------------------------
 
 def build_figure(
-    rgb_img: np.ndarray,
-    heatmap_img: np.ndarray,
-    actual_country: str,
-    pred_country: str,
-    confidence: float,
-    filename: str,
-    results_dict: dict,
+        rgb_img: np.ndarray,
+        heatmap_img: np.ndarray,
+        actual_country: str,
+        pred_country: str,
+        confidence: float,
+        filename: str,
+        results_dict: dict,
 ) -> plt.Figure:
     """Tworzy figurę z oryginalnym zdjęciem, heatmapą i wykresem klas."""
     is_correct = pred_country.upper() == actual_country.upper()
@@ -135,24 +139,12 @@ def build_figure(
 
 
 # ---------------------------------------------------------------------------
-# Analiza jednego obrazu
+# Analiza jednego obrazu (Zmieniona na przyjmowanie konkretnej ścieżki)
 # ---------------------------------------------------------------------------
 
-def analyze_single_image(model: torch.nn.Module, data_dir: str, device: torch.device):
-    """
-    Losuje obraz, wykonuje predykcję i generuje wizualizację z Grad-CAM.
-    Zwraca: (figura, słownik prawdopodobieństw, nazwa faktycznego kraju).
-    """
-    # Losowanie zdjęcia
-    actual_country = random.choice(TARGET_COUNTRIES)
-    country_folder = os.path.join(data_dir, actual_country)
-    if not os.path.exists(country_folder):
-        country_folder = country_folder.lower()
+def analyze_single_image(model: torch.nn.Module, img_path: str, actual_country: str, device: torch.device):
+    """Przetwarza wskazane zdjęcie, wykonuje predykcję i generuje wizualizację z Grad-CAM."""
 
-    filename = random.choice(os.listdir(country_folder))
-    img_path = os.path.join(country_folder, filename)
-
-    # Przetwarzanie i inferencja
     input_tensor, rgb_img = preprocess_image(img_path)
     probabilities = run_inference(model, input_tensor, device)
     pred_idx = int(np.argmax(probabilities))
@@ -164,6 +156,7 @@ def analyze_single_image(model: torch.nn.Module, data_dir: str, device: torch.de
     actual_country_idx = TARGET_COUNTRIES.index(actual_country.upper())
     heatmap = generate_heatmap(model, input_tensor.to(device), target_layer, actual_country_idx, rgb_img)
 
+    filename = Path(img_path).name
     fig = build_figure(
         rgb_img, heatmap,
         actual_country, TARGET_COUNTRIES[pred_idx],
@@ -179,11 +172,12 @@ def analyze_single_image(model: torch.nn.Module, data_dir: str, device: torch.de
 # ---------------------------------------------------------------------------
 
 def clear_mistakes_folder(folder: Path) -> None:
-    """Usuwa wszystkie pliki z podfolderów folderu z pomyłkami."""
-    for subfolder in folder.iterdir():
-        for file in subfolder.iterdir():
-            if file.is_file():
-                file.unlink()
+    """Bezpiecznie usuwa pliki z podfolderów folderu z pomyłkami."""
+    if not folder.exists():
+        return
+    for file in folder.rglob("*"):
+        if file.is_file():
+            file.unlink()
 
 
 # ---------------------------------------------------------------------------
@@ -196,9 +190,10 @@ def main() -> None:
         else ("mps" if torch.backends.mps.is_available() else "cpu")
     )
 
-    print("⏳ Pobieranie i weryfikacja danych z Kaggle (to potrwa tylko chwilę)...")
-    kaggle_path = kagglehub.dataset_download("sylshaw/streetview-by-country")
-    data_dir = os.path.join(kaggle_path, "streetview_images")
+    print("⏳ Generowanie podziału na zbiory (aby wydobyć wyłącznie zdjęcia testowe)...")
+    # Zaciągamy logikę z dataset.py, ignorujemy train i val, bierzemy tylko test
+    dataloaders, _ = setup_data(batch_size=1)
+    test_ds = dataloaders['test'].dataset
 
     model = load_trained_model(MODEL_PATH, len(TARGET_COUNTRIES), device)
 
@@ -209,10 +204,21 @@ def main() -> None:
 
     clear_mistakes_folder(MISTAKES_ROOT)
 
-    print(f"\n🚀 Rozpoczynam weryfikację {N_IMAGES} obrazów...")
+    # Upewniamy się, że nie próbujemy przeanalizować więcej zdjęć niż jest w teście
+    n_available = len(test_ds)
+    n_to_analyze = min(N_IMAGES, n_available)
 
-    for i in range(N_IMAGES):
-        fig, results, actual = analyze_single_image(model, data_dir, device)
+    # Losujemy unikalne indeksy ze zbioru testowego
+    test_indices = random.sample(range(n_available), n_to_analyze)
+
+    print(f"\n🚀 Rozpoczynam weryfikację {n_to_analyze} obrazów (BEZ WYCIEKU DANYCH)...")
+
+    for i, idx in enumerate(test_indices):
+        # Magia odzyskiwania ścieżki i etykiety z Subsetu zablokowanego w dataset.py
+        img_path, actual_label_idx = test_ds.dataset.samples[test_ds.indices[idx]]
+        actual_country = TARGET_COUNTRIES[actual_label_idx]
+
+        fig, results, actual = analyze_single_image(model, img_path, actual_country, device)
         guessed = max(results, key=results.get)
 
         is_mistake = actual in mistake_stats and guessed in mistake_stats.get(actual, {}) and actual != guessed
@@ -225,9 +231,9 @@ def main() -> None:
         plt.close(fig)
 
         if (i + 1) % 10 == 0:
-            print(f"✅ Przeanalizowano {i + 1}/{N_IMAGES} zdjęć...")
+            print(f"✅ Przeanalizowano {i + 1}/{n_to_analyze} zdjęć...")
 
-    print("\n📊 Statystyki pomyłek (PL, GR, CZ):")
+    print("\n📊 Statystyki pomyłek w zbiorze testowym (PL, GR, CZ):")
     for country, mistakes in mistake_stats.items():
         print(f"  Kraj docelowy {country} pomylono z: {mistakes}")
 

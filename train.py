@@ -8,8 +8,8 @@ import torch.optim.lr_scheduler as lr_scheduler
 
 
 def train_model():
-    epochs = 15
-    batch_size = 16
+    epochs = 20
+    batch_size = 32
     device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
     print(f"🚀 Trening na urządzeniu: {device}")
 

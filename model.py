@@ -1,10 +1,10 @@
 import torch.nn as nn
-from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights
+from torchvision.models import efficientnet_b2, EfficientNet_B2_Weights
 
 def get_model(num_classes):
     # 1. Pobieramy sieć
-    weights = EfficientNet_B0_Weights.IMAGENET1K_V1
-    model = efficientnet_b0(weights=weights)
+    weights = EfficientNet_B2_Weights.IMAGENET1K_V1
+    model = efficientnet_b2(weights=weights)
 
     # print(model)
 
