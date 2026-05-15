@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, random_split
 
 # Konfiguracja
 TARGET_COUNTRIES = [
-    'PL', 'CZ', 'GR'
+    'PL', 'DE', 'FR'
 
 ]
 

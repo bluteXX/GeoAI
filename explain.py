@@ -21,7 +21,7 @@ from model import get_model
 # Stałe
 # ---------------------------------------------------------------------------
 
-ANALYZED_COUNTRIES = ["PL", "GR", "CZ"]
+ANALYZED_COUNTRIES = ["PL", "DE", "FR"]
 N_IMAGES = 200
 MISTAKES_ROOT = Path("/Users/kacperwrobel/Documents/Studia/AI/projekt/GeoAI/mistakes")
 MODEL_PATH = "geoguesser_baseline.pth"
