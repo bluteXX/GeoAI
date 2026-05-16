@@ -5,9 +5,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, random_split
 
 # Konfiguracja
-TARGET_COUNTRIES = [
-    'AT', 'BE', 'BG', 'HR', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE',
-]
+TARGET_COUNTRIES = ['PL', 'DE', 'FR', 'IT', 'ES', 'NL', 'BE', 'AT', 'CZ', 'SE']
 
 data_transforms = {
     'train': transforms.Compose([
