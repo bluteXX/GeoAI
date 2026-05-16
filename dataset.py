@@ -5,14 +5,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, random_split
 
 # Konfiguracja
-# dataset.py
-
-# Pełna lista państw z Twojego projektu (10 krajów)
 TARGET_COUNTRIES = ['PL', 'DE', 'FR', 'IT', 'ES', 'NL', 'BE', 'AT', 'CZ', 'SE']
-
-# Reszta kodu transforms i setup_data pozostaje bez zmian (pamiętaj o usunięciu RandomErasing, tak jak ustaliliśmy)
-
-
 
 data_transforms = {
     'train': transforms.Compose([
@@ -24,7 +17,8 @@ data_transforms = {
         transforms.RandomErasing(p=0.5, scale=(0.02, 0.1), value='random'),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
-    'val': transforms.Compose([
+    # Wspólne transformacje bez sztucznego psucia dla Val i Test
+    'val_test': transforms.Compose([
         transforms.Resize((640, 640)),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
@@ -36,9 +30,9 @@ def setup_data(batch_size=16):
     path = kagglehub.dataset_download("sylshaw/streetview-by-country")
     data_dir = os.path.join(path, "streetview_images")
 
-    # Tworzymy dwa obiekty datasetu, żeby mieć różne transformacje
+    # Tworzymy obiekty datasetu z odpowiednimi transformacjami
     train_full = datasets.ImageFolder(root=data_dir, transform=data_transforms['train'])
-    val_full = datasets.ImageFolder(root=data_dir, transform=data_transforms['val'])
+    val_test_full = datasets.ImageFolder(root=data_dir, transform=data_transforms['val_test'])
 
     idx_to_class = {v: k for k, v in train_full.class_to_idx.items()}
     new_class_to_idx = {country: i for i, country in enumerate(TARGET_COUNTRIES)}
@@ -55,26 +49,35 @@ def setup_data(batch_size=16):
 
     new_samples = get_filtered_samples(train_full.samples)
 
-    # Nadpisujemy próbki w obu datasetach
+    # Nadpisujemy próbki
     train_full.samples = new_samples
     train_full.imgs = new_samples
-    val_full.samples = new_samples
-    val_full.imgs = new_samples
+    val_test_full.samples = new_samples
+    val_test_full.imgs = new_samples
 
-    # Podział na te same indeksy dla obu
-    train_size = int(0.8 * len(new_samples))
-    val_size = len(new_samples) - train_size
-    indices = torch.arange(len(new_samples))
-    train_idx, val_idx = random_split(indices, [train_size, val_size],
-                                      generator=torch.Generator().manual_seed(42))
+    # PODZIAŁ NA 3 ZBIORY (80% Train, 10% Val, 10% Test)
+    num_samples = len(new_samples)
+    train_size = int(0.8 * num_samples)
+    val_size = int(0.1 * num_samples)
+    test_size = num_samples - train_size - val_size
+
+    indices = torch.arange(num_samples)
+    train_idx, val_idx, test_idx = random_split(
+        indices,
+        [train_size, val_size, test_size],
+        generator=torch.Generator().manual_seed(42)
+    )
 
     # Tworzymy Subsets z odpowiednimi transformacjami
     train_ds = torch.utils.data.Subset(train_full, train_idx)
-    val_ds = torch.utils.data.Subset(val_full, val_idx)
+    val_ds = torch.utils.data.Subset(val_test_full, val_idx)
+    test_ds = torch.utils.data.Subset(val_test_full, test_idx)
 
+    # Mamy 3 pełnoprawne loadery!
     dataloaders = {
         'train': DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True),
-        'val': DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True)
+        'val': DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True),
+        'test': DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True)
     }
 
     return dataloaders, TARGET_COUNTRIES
