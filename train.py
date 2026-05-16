@@ -3,13 +3,12 @@ import torch.nn as nn
 import torch.optim as optim
 from model import get_model
 from dataset import setup_data
-import torch.optim.lr_scheduler as lr_scheduler  # DODANE: potrzebne do sterowania LR
 
 
 def train_model():
     # Parametry
     torch.backends.cudnn.benchmark = True
-    epochs = 20  # Zwiększamy na 20, by Fine-Tuning miał czas zadziałać
+    epochs = 15  # Zmniejszone, ponieważ trenujemy tylko "głowę"
     batch_size = 16
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -19,10 +18,10 @@ def train_model():
     model = get_model(len(class_names))
     model = model.to(device)
 
-    # Label Smoothing od razu dodany dla stabilności
+    # Label Smoothing dla stabilności
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
 
-    # FAZA 1: Podajemy do optymalizatora TYLKO niezamrożone warstwy (nową głowę)
+    # Podajemy do optymalizatora TYLKO niezamrożone warstwy (nową głowę)
     params_to_update = [p for p in model.parameters() if p.requires_grad]
     optimizer = optim.Adam(params_to_update, lr=0.001)
 
@@ -31,21 +30,6 @@ def train_model():
     best_acc = 0.0  # Do śledzenia najlepszego wyniku
 
     for epoch in range(epochs):
-
-        # --- START FINE-TUNING ---
-        if epoch == 5:
-            print("\n🔓 Odmrażanie reszty sieci! Przechodzimy w tryb głębokiego Fine-Tuningu.")
-            # 1. Odmrażamy wszystkie parametry
-            for param in model.parameters():
-                param.requires_grad = True
-
-            # 2. Zmieniamy optymalizator na AdamW z dużo mniejszym Learning Rate,
-            #    aby nie "rozwalić" pre-trenowanych wag z ImageNetu.
-            optimizer = optim.AdamW(model.parameters(), lr=5e-5, weight_decay=1e-3)
-
-            # 3. Odpalamy harmonogram (Scheduler), który będzie powoli i faliście zmniejszał LR
-            scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=5, T_mult=2, eta_min=1e-6)
-        # --- KONIEC FINE-TUNING ---
 
         for phase in ['train', 'val']:
             if phase == 'train':
@@ -78,10 +62,6 @@ def train_model():
             epoch_acc = running_corrects.double() / len(dataloaders[phase].dataset)
 
             print(f'Epoch {epoch + 1}/{epochs} | {phase.capitalize()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
-
-            # Aktualizujemy Scheduler tylko podczas treningu po 5 epoce
-            if phase == 'train' and epoch >= 5:
-                scheduler.step()
 
             # Zapisujemy model TYLKO po walidacji i TYLKO jeśli pobił rekord
             if phase == 'val':
